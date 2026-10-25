@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.87"
 description = "Derive macros for matma's std140/std430 GPU buffer layouts (#[derive(Std140)], #[derive(Std430)])."
 license = "MIT"
+repository = "https://github.com/qbart/matma"
 keywords = ["math", "vulkan", "gamedev", "std140", "derive"]
 categories = ["game-development", "graphics", "rendering"]
 
