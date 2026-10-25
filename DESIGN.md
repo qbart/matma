@@ -24,6 +24,7 @@ src/
   quaternion.rs   Quaternion<T> (quat / dquat)
   transform.rs    translate/rotate/scale, look_at, perspective/ortho (Vulkan), decompose
   common.rs       min/max/clamp/lerp/... generic over Componentwise
+  curves.rs       Hermite/Catmull-Rom/cardinal splines, arc-length table, AnimationCurve (needs alloc)
   pack.rs         snorm/unorm quantization, octahedral encoding, half floats
   layout.rs       std140 / std430 alignment rules and padded storage
 matma-derive/     proc-macro crate: #[derive(Std140)] / #[derive(Std430)] (feature `derive`)
@@ -174,5 +175,8 @@ loads, and the derive / wrappers supply the 16 where the GPU needs it.
    `#[derive(Std140)]` / `#[derive(Std430)]`.
 5. ✅ Swizzles, `common` (incl. Unity-style helpers), `pack` (snorm/unorm/oct/half).
 6. ✅ determinant/inverse (2x2/3x3/4x4) + `normal_matrix`.
+6b. ✅ `curves`: splines + arc length + `AnimationCurve`, ported from the engine's
+   `spline.cpp` / `animation_curve.cpp` (generic over the vector type; the
+   `Timer` overload stayed behind with the engine).
 7. ⏳ Wider SIMD (`float3` padded load, `f64` via AVX), `bytemuck` feature, `no_std`
    via `libm`, benchmarks vs glam.

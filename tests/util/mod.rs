@@ -17,6 +17,9 @@ pub fn near2(a: float2, b: float2) -> bool {
 pub fn near3(a: float3, b: float3) -> bool {
     near(a.x, b.x) && near(a.y, b.y) && near(a.z, b.z)
 }
+pub fn near3_eps(a: float3, b: float3, eps: f32) -> bool {
+    near_eps(a.x, b.x, eps) && near_eps(a.y, b.y, eps) && near_eps(a.z, b.z, eps)
+}
 pub fn near4(a: float4, b: float4) -> bool {
     near(a.x, b.x) && near(a.y, b.y) && near(a.z, b.z) && near(a.w, b.w)
 }
