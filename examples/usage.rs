@@ -65,4 +65,28 @@ fn main() {
         "size of Std140<float3x3>",
         core::mem::size_of::<Std140<float3x3>>(),
     ); // 48
+
+    // ---- 5. Uniform block via #[derive(Std140)] ------------------------------
+    // layout(std140) uniform Camera { mat4 mvp; vec3 eye; float near; float far; };
+    println!("\n[std140 derive]");
+    let cam = Camera {
+        mvp,
+        eye: float3::new(0.0, 0.0, 5.0),
+        near: 0.1,
+        far: 100.0,
+    };
+    let gpu = cam.as_std140(); // CameraStd140, offsets as the shader expects
+    print("offset_of(eye)", core::mem::offset_of!(CameraStd140, eye)); // 64
+    print("offset_of(near)", core::mem::offset_of!(CameraStd140, near)); // 76 (tucked in)
+    print("CameraStd140::SIZE", CameraStd140::SIZE); // 96
+    print("as_bytes().len()", gpu.as_bytes().len()); // upload this
+    print("round trip eye", gpu.into_inner().eye);
 }
+
+#[derive(Clone, Copy, Std140)]
+struct Camera {
+    mvp: float4x4, // 0
+    eye: float3,   // 64
+    near: f32,     // 76
+    far: f32,      // 80
+} // 96

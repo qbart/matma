@@ -46,7 +46,7 @@
 //! | [`transform`]   | translate/scale/rotate, TRS, look_at, perspective/ortho, decompose |
 //! | [`common`]      | min/max/clamp/saturate/lerp/step/smoothstep, trig, game helpers  |
 //! | [`pack`]        | snorm/unorm quantization, octahedral normals, half-float packing |
-//! | [`layout`]      | std140/std430 alignment rules and wrappers                       |
+//! | [`layout`]      | std140/std430 rules, `#[derive(Std140)]`, padded wrappers         |
 //! | [`scalar`]      | the `Scalar`/`Float`/`Componentwise` traits generic code is built on |
 //! | [`simd`]        | the 4-wide `f32` backend (SSE2 / NEON / scalar)                  |
 
@@ -62,6 +62,12 @@ pub mod scalar;
 pub mod simd;
 pub mod transform;
 pub mod vector;
+
+/// `#[derive(Std140)]` / `#[derive(Std430)]`: generate the GPU layout of a struct.
+/// See [`layout`] and [`Std140Layout`](layout::Std140Layout).
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub use matma_derive::{Std140, Std430};
 
 pub use common::*;
 pub use layout::*;

@@ -1,7 +1,7 @@
 # matma — design
 
 A SIMD-first math library for games and Vulkan, with Slang/HLSL naming, in pure
-Rust with no dependencies. A port of [vkm](https://github.com/qbart/vkm) (C++23);
+Rust with no third-party dependencies. A port of [vkm](https://github.com/qbart/vkm) (C++23);
 this file records what the port kept, what Rust forced us to change, and why.
 
 ## Goals (unchanged from vkm)
@@ -26,7 +26,9 @@ src/
   common.rs       min/max/clamp/lerp/... generic over Componentwise
   pack.rs         snorm/unorm quantization, octahedral encoding, half floats
   layout.rs       std140 / std430 alignment rules and padded storage
+matma-derive/     proc-macro crate: #[derive(Std140)] / #[derive(Std430)] (feature `derive`)
 tests/            one file per vkm test, plus simd.rs (backend vs scalar reference)
+                  and derive.rs (generated offsets vs the GLSL rules)
 ```
 
 ## Conventions
@@ -108,23 +110,59 @@ only constructors, constants and the `pack` encoders are `const fn`.
 ## Layout helpers
 
 vkm's `std140<T>` is `alignas(std140_align_v<T>)` — a computed alignment, which
-Rust's `#[repr(align(N))]` cannot express. The port instead has:
+Rust's `#[repr(align(N))]` cannot express. The port has two paths.
 
-- `Std140Layout` / `Std430Layout` traits carrying `ALIGN` and two associated
-  storage types, `Padded` (lone member) and `Slot` (array element).
-- `Align8<T>` / `Align16<T>` / `Align32<T>` wrappers and `PaddedCols<S, C>` for
-  column-padded matrices; `Padded<T>` (`From<T>`, `into_inner`, `set`) unifies them.
+**Derive path** (`#[derive(Std140)]`, `#[derive(Std430)]`, crate `matma-derive`).
+The macro sees the field list, so it can do what `alignas` cannot: compute every
+offset. For `struct Name { f0: T0, f1: T1, .. }` it emits
+
+- a hidden helper type whose associated consts walk the fields:
+  `OFF_i = align_up(END_{i-1}, <T_i as Std140Layout>::ALIGN)`,
+  `END_i = OFF_i + size_of::<<T_i>::Field>()`, struct `ALIGN` = max member
+  alignment (rounded to 16 for std140), `SIZE = align_up(END_last, ALIGN)`;
+- `#[repr(C)] struct NameStd140 { _pad0: [u8; PAD0], f0: <T0>::Field, _pad1: .., f1, .., _tail }`
+  — explicit zero-byte padding, so the struct has no uninitialised bytes and
+  `as_bytes()` is sound;
+- `Padded<Name>` (`wrap` / `into_inner` / `zeroed`), `From` both ways, `Default`,
+  `Debug` (hides the pads), `Name::as_std140()`, `SIZE` / `ALIGN`;
+- `impl Std140Layout for Name` so derived structs nest and form arrays;
+- `const` assertions that `offset_of!` of every field equals the computed offset
+  and `size_of` equals `SIZE`. If Rust ever placed a field elsewhere, the crate
+  would not compile.
+
+`Field` is the third storage type on the layout traits and the key to the
+tuck-in: for scalars and vectors it is the type itself (a `float3` field is 12
+bytes, so a following `f32` lands at offset 12 like GLSL), for matrices and arrays
+it is the slot-padded storage. The macro is a hand-rolled token walker over
+`proc_macro` (fixed input shape: non-generic struct, named fields), so the
+repository still has no third-party dependencies. The trait is `unsafe trait`:
+implementors promise that `Padded`/`Slot`/`Field` are fully initialised plain
+data, which is what `as_bytes()` relies on.
+
+Limits: std140 structs get `#[repr(C, align(16))]` (always correct: a 32-aligned
+struct still has a 32-multiple size); std430 structs keep Rust's natural
+alignment, so a derived std430 struct placed in a *hand-written* parent must be
+aligned by hand (inside a derived parent the pads take care of it).
+
+**Wrapper path** for hand-written `#[repr(C)]` structs:
+
+- `Std140Layout` / `Std430Layout` traits carrying `ALIGN` and the storage types
+  `Padded` (lone member), `Slot` (array element, std140 only) and `Field`.
+- `Padded8/16/32<T, PAD>` wrappers (`#[repr(C, align(N))]` with `PAD` explicit zero
+  bytes, so no implicit padding) and `PaddedCols<S, C>` for column-padded
+  matrices; the `Padded<T>` trait (`wrap`, `into_inner`, `set`, `zeroed`) unifies
+  them, with identity impls for scalars and vectors and an impl for arrays.
 - `Std140<T> = <T as Std140Layout>::Padded` resolves to `f32` for `f32`, to
-  `Align16<float3>` for `float3`, to `PaddedCols<Align16<float3>, 3>` for `float3x3`.
+  `Padded16<float3, 4>` for `float3`, to `PaddedCols<Padded16<float3, 4>, 3>` for
+  `float3x3`, and to `NameStd140` for a derived struct.
 
 The alignment constants are still there (`std140_align::<T>()`) to check a
-hand-written `#[repr(C, align(16))]` struct — the only way to get the vec3+scalar
-tuck-in, same as vkm's alignas-trait path.
+hand-written `#[repr(C, align(16))]` struct, same as vkm's alignas-trait path.
 
 `float4` is **not** over-aligned to 16 (vkm's `alignas(4*sizeof(T))`): a generic
 `Vector4<T>` cannot take a type-dependent alignment, and forcing 16 would make
 `Vector4<u8>` 16 bytes and break RGBA8 vertex formats. SIMD uses unaligned
-loads, and the std140 wrappers supply the 16 where the GPU needs it.
+loads, and the derive / wrappers supply the 16 where the GPU needs it.
 
 ## Roadmap
 
@@ -132,7 +170,8 @@ loads, and the std140 wrappers supply the 16 where the GPU needs it.
 2. ✅ `Matrix<V, C>` (column-major, M*v), mul/transpose/identity, shape-checked products.
 3. ✅ `Quaternion<T>` + `transform`: translate/scale/rotate/look_at/compose_trs,
    `perspective`/`ortho` with Vulkan depth [0,1] + Y-flip, `decompose`.
-4. ✅ `layout`: std140/std430 rules, `Std140<T>`/`Std430<T>` wrappers and arrays.
+4. ✅ `layout`: std140/std430 rules, `Std140<T>`/`Std430<T>` wrappers and arrays,
+   `#[derive(Std140)]` / `#[derive(Std430)]`.
 5. ✅ Swizzles, `common` (incl. Unity-style helpers), `pack` (snorm/unorm/oct/half).
 6. ✅ determinant/inverse (2x2/3x3/4x4) + `normal_matrix`.
 7. ⏳ Wider SIMD (`float3` padded load, `f64` via AVX), `bytemuck` feature, `no_std`

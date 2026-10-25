@@ -1,0 +1,14 @@
+[package]
+name = "matma-derive"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.87"
+description = "Derive macros for matma's std140/std430 GPU buffer layouts (#[derive(Std140)], #[derive(Std430)])."
+license = "MIT"
+keywords = ["math", "vulkan", "gamedev", "std140", "derive"]
+categories = ["game-development", "graphics", "rendering"]
+
+[lib]
+proc-macro = true
+
+[dependencies]

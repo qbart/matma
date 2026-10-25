@@ -9,13 +9,20 @@ readme = "README.md"
 keywords = ["math", "vulkan", "gamedev", "linear-algebra", "simd"]
 categories = ["game-development", "mathematics", "graphics", "rendering"]
 
+[workspace]
+members = ["matma-derive"]
+
 [features]
-default = []
+default = ["derive"]
+# `#[derive(Std140)]` / `#[derive(Std430)]` (the matma-derive proc-macro crate,
+# part of this repository; still no third-party dependencies).
+derive = ["dep:matma-derive"]
 # Bypass the SSE2/NEON backend and run the portable scalar path (handy for
 # debugging and for diffing SIMD vs scalar results).
 force-scalar = []
 
 [dependencies]
+matma-derive = { version = "0.1.0", path = "matma-derive", optional = true }
 
 [lints.rust]
 missing_docs = "warn"

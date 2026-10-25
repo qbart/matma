@@ -203,7 +203,7 @@ fn round_trips() {
     assert_eq!(p3.into_inner(), m3);
     p3.set(float3x3::IDENTITY);
     assert_eq!(p3.into_inner(), float3x3::IDENTITY);
-    assert_eq!(p3.cols[1].0, float3::Y); // padded column is an Align16<float3>
+    assert_eq!(p3.cols[1].value, float3::Y); // padded column is a Padded16<float3, 4>
 
     let mut arr: Std140Array<float4, 3> = Default::default();
     arr[1] = float4::new(1.0, 2.0, 3.0, 4.0).into();
@@ -212,7 +212,7 @@ fn round_trips() {
 
     let mut farr: Std140Array<f32, 4> = Default::default();
     farr[2] = 5.0.into();
-    assert_eq!(farr[2].0, 5.0);
+    assert_eq!(farr[2].value, 5.0);
     assert_eq!(size_of_val(&farr), 64);
 }
 
