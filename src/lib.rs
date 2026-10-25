@@ -1,7 +1,9 @@
 //! # matma
 //!
-//! SIMD-first math for games and Vulkan, with Slang/HLSL naming. Pure Rust, zero
-//! dependencies. A port of the C++23 library [vkm](https://github.com/qbart/vkm).
+//! SIMD-first math for games and Vulkan, with Slang/HLSL naming. Pure Rust, no
+//! third-party dependencies (the optional `derive` feature pulls in this
+//! repository's own `matma-derive` proc-macro crate). A port of the C++23 library
+//! [vkm](https://github.com/qbart/vkm).
 //!
 //! Think "GLM, but Vulkan conventions by default and Slang-style names so Rust and
 //! shader code mirror each other."
