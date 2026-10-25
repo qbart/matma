@@ -1,0 +1,21 @@
+[package]
+name = "matma"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.87"
+description = "SIMD-first game math for Vulkan with Slang/HLSL naming: float3, float4x4, quat, std140/std430 layout helpers, GPU packing. Pure Rust, zero dependencies."
+license = "MIT"
+readme = "README.md"
+keywords = ["math", "vulkan", "gamedev", "linear-algebra", "simd"]
+categories = ["game-development", "mathematics", "graphics", "rendering"]
+
+[features]
+default = []
+# Bypass the SSE2/NEON backend and run the portable scalar path (handy for
+# debugging and for diffing SIMD vs scalar results).
+force-scalar = []
+
+[dependencies]
+
+[lints.rust]
+missing_docs = "warn"
