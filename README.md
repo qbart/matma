@@ -146,6 +146,37 @@ padding, so no uninitialised bytes), and to column-padded storage for matrices
 give the base alignments for checking a hand-aligned struct. `bool` is
 deliberately unsupported (4 bytes in GLSL, 1 in Rust): use `u32`.
 
+## Curves
+
+Catmull-Rom / cardinal splines through waypoints, an arc-length table for
+constant-speed travel and closest-point queries, and Unity-style keyframed
+`AnimationCurve`s. Everything is generic over the vector type.
+
+```rust
+use matma::*;
+
+let mut path = Spline::<float3>::new();          // tension 0 (Catmull-Rom), alpha 0.5 (centripetal)
+path.add(float3::new(0.0, 1.0, 5.0));
+path.add(float3::new(3.0, 2.0, 2.0));
+path.add(float3::new(3.0, 1.5, -2.0));
+path.add(float3::new(-1.0, 1.0, -4.0));
+
+let p = path.evaluate(1.5);                      // u = segment index + fraction
+let dir = path.tangent(1.5).normalize();
+let polyline = path.sample(8);                   // 3 segments * 8 + 1 points
+
+let arc = SplineArcLength::build(&path, 32);     // rebuild after editing the path
+let pos = arc.evaluate_by_distance(&path, 2.0);  // 2 world units along the curve
+let mid = arc.evaluate_uniform(&path, 0.5);      // halfway by distance, not by u
+let u = arc.nearest_u(&path, float3::new(2.0, 1.0, 0.0));
+
+let mut fade = AnimationCurve::<f32>::from_preset(Preset::EaseInOut);
+fade.add_key(0.6, 1.2);                          // overshoot, flat tangents
+let alpha = fade.evaluate(0.3);
+```
+
+See `examples/curves.rs` for the full tour.
+
 ## Differences from vkm (C++)
 
 | vkm (C++)                                   | matma (Rust) |
@@ -172,7 +203,8 @@ deliberately unsupported (4 bytes in GLSL, 1 in Rust): use `u32`.
 cargo test                           # SSE2 / NEON backend
 cargo test --features force-scalar   # portable fallback, diff against SIMD results
 cargo build --no-default-features    # without the derive macros (drops the proc-macro crate)
-cargo run --example usage
+cargo run --example usage            # vectors, quaternions, MVP, GPU interop, derive(Std140)
+cargo run --example curves           # splines, arc length, AnimationCurve
 ```
 
 MSRV 1.87 (edition 2024).
