@@ -64,7 +64,7 @@ pub mod transform;
 pub mod vector;
 
 /// `#[derive(Std140)]` / `#[derive(Std430)]`: generate the GPU layout of a struct.
-/// See [`layout`] and [`Std140Layout`](layout::Std140Layout).
+/// See [`layout`] and [`Std140Layout`].
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use matma_derive::{Std140, Std430};

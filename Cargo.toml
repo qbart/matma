@@ -21,6 +21,10 @@ derive = ["dep:matma-derive"]
 # debugging and for diffing SIMD vs scalar results).
 force-scalar = []
 
+[[example]]
+name = "usage"
+required-features = ["derive"]
+
 [dependencies]
 matma-derive = { version = "0.1.0", path = "matma-derive", optional = true }
 
