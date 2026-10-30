@@ -47,7 +47,7 @@
 //! | [`quaternion`]  | `Quaternion<T>`, slerp/nlerp, look rotation, from/to matrix      |
 //! | [`transform`]   | translate/scale/rotate, TRS, look_at, perspective/ortho, decompose |
 //! | [`common`]      | min/max/clamp/saturate/lerp/step/smoothstep, trig, game helpers  |
-//! | [`curves`]      | Hermite / Catmull-Rom / cardinal splines, arc length, `AnimationCurve` |
+//! | [`curves`]      | Hermite / Catmull-Rom / cardinal splines, arc length, `AnimationCurve`, `MonotoneCurve` |
 //! | [`pack`]        | snorm/unorm quantization, octahedral normals, half-float packing |
 //! | [`layout`]      | std140/std430 rules, `#[derive(Std140)]`, padded wrappers         |
 //! | [`scalar`]      | the `Scalar`/`Float`/`Componentwise` traits generic code is built on |

@@ -91,4 +91,36 @@ fn main() {
     path.points_mut()[3] = float3::new(-3.0, 1.0, -6.0);
     let arc = SplineArcLength::build(&path, 32);
     print("length() after edit", arc.length());
+
+    // ---- 4. MonotoneCurve: a remap ramp that never overshoots ---------------
+    println!("\n[monotone curve]");
+    // Speed (m/s) -> field of view (degrees). A flat run then a jump: a Catmull-Rom
+    // would dip below 60 before 10 m/s and overshoot 80 after 20 m/s; this won't.
+    let mut fov = MonotoneCurve::from_keys([
+        float2::new(0.0, 60.0),
+        float2::new(10.0, 60.0),
+        float2::new(20.0, 80.0),
+        float2::new(40.0, 82.0),
+    ]);
+    print("tangents (dFOV/dspeed)", fov.tangents()); // 0 at the flat run's ends
+    for speed in [5.0f32, 15.0, 25.0, 60.0] {
+        print(&format!("fov({speed} m/s)"), fov.evaluate(speed));
+    }
+    print("derivative(15)", fov.derivative(15.0));
+    // Bake it into a lookup table for a shader or a hot loop.
+    let lut = fov.sample(9); // 9 values from 0 to 40 m/s, both ends included
+    print("sample(9)", lut);
+    // Keys stay sorted; adding at an existing x replaces it.
+    fov.add(30.0, 81.0);
+    fov.add(40.0, 85.0);
+    print("after edits: keys", fov.keys());
+    print("domain", fov.domain());
+
+    // The same tangents as a "make monotone" action on an AnimationCurve.
+    let mut bounce = AnimationCurve::<f32>::from_preset(Preset::Linear);
+    bounce.add_key(0.6, 1.2);
+    bounce.set_out_tangent_value(1, 3.0); // hand-dragged, overshoots
+    print("hand tangents: evaluate(0.7)", bounce.evaluate(0.7)); // > 1.2
+    bounce.set_monotone_tangents();
+    print("monotone: evaluate(0.7)", bounce.evaluate(0.7)); // within [1.0, 1.2]
 }

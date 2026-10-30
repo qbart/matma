@@ -371,3 +371,177 @@ fn f64_curves() {
     let arc = SplineArcLength::build(&s, 16);
     assert!(arc.length() > 1.0);
 }
+
+// ---- MonotoneCurve --------------------------------------------------------------
+
+fn keys(xy: &[(f32, f32)]) -> Vec<float2> {
+    xy.iter().map(|&(x, y)| float2::new(x, y)).collect()
+}
+
+#[test]
+fn fritsch_carlson_tangents_known_values() {
+    // Secants 1, 2, 1: ends one-sided, interior averaged, nothing hits the limit.
+    let k = keys(&[(0.0, 0.0), (1.0, 1.0), (2.0, 3.0), (3.0, 4.0)]);
+    let mut m = vec![0.0f32; 4];
+    fritsch_carlson_tangents(&k, &mut m);
+    check!(near(m[0], 1.0));
+    check!(near(m[1], 1.5));
+    check!(near(m[2], 1.5));
+    check!(near(m[3], 1.0));
+    // Local extremum -> zero slope.
+    let k = keys(&[(0.0, 0.0), (1.0, 1.0), (2.0, 0.0)]);
+    let mut m = vec![0.0f32; 3];
+    fritsch_carlson_tangents(&k, &mut m);
+    assert_eq!(m[1], 0.0);
+    // Flat segment -> both of its ends flat.
+    let k = keys(&[(0.0, 0.0), (1.0, 1.0), (2.0, 1.0), (3.0, 2.0)]);
+    let mut m = vec![0.0f32; 4];
+    fritsch_carlson_tangents(&k, &mut m);
+    assert_eq!(m[1], 0.0);
+    assert_eq!(m[2], 0.0);
+    // Steep step after a slow run: the limit kicks in, slopes are scaled, not zeroed.
+    let k = keys(&[(0.0, 0.0), (1.0, 0.01), (2.0, 1.0), (3.0, 1.01)]);
+    let mut m = vec![0.0f32; 4];
+    fritsch_carlson_tangents(&k, &mut m);
+    assert!(m[1] > 0.0 && m[2] > 0.0);
+    let d = 0.99f32;
+    let (a, b) = (m[1] / d, m[2] / d);
+    assert!(a * a + b * b <= 9.0 + 1e-4);
+    // Degenerate sizes.
+    fritsch_carlson_tangents(&[], &mut []);
+    let mut one = [5.0f32];
+    fritsch_carlson_tangents(&[float2::new(1.0, 2.0)], &mut one);
+    assert_eq!(one[0], 0.0);
+}
+
+#[test]
+fn monotone_curve_interpolates_and_never_overshoots() {
+    let data = [
+        (0.0, 0.0),
+        (1.0, 0.1),
+        (2.0, 0.2),
+        (3.0, 5.0),
+        (4.0, 5.1),
+        (6.0, 5.1),
+        (7.0, 9.0),
+    ];
+    let c = MonotoneCurve::from_keys(keys(&data));
+    for &(x, y) in &data {
+        check!(near(c.evaluate(x), y));
+    }
+    // Non-decreasing data -> non-decreasing curve, bounded by the segment's keys.
+    let mut prev = c.evaluate(0.0);
+    for i in 1..=700 {
+        let x = i as f32 * 0.01;
+        let v = c.evaluate(x);
+        assert!(v >= prev - 1e-5, "decreasing at x={x}: {v} < {prev}");
+        let (lo, hi) = (
+            c[c.keys().partition_point(|k| k.x <= x) - 1],
+            c[c.keys().partition_point(|k| k.x <= x).min(6)],
+        );
+        assert!(
+            v >= lo.y - 1e-5 && v <= hi.y + 1e-5,
+            "overshoot at x={x}: {v}"
+        );
+        prev = v;
+    }
+    // A Catmull-Rom through the same keys would overshoot the flat run.
+    assert_eq!(c.evaluate(5.0), 5.1);
+}
+
+#[test]
+fn monotone_curve_clamps_and_derivative() {
+    let c = MonotoneCurve::from_keys(keys(&[(1.0, 2.0), (2.0, 4.0), (4.0, 5.0)]));
+    assert_eq!(c.domain(), (1.0, 4.0));
+    assert_eq!(c.evaluate(-3.0), 2.0);
+    assert_eq!(c.evaluate(10.0), 5.0);
+    assert_eq!(c.derivative(0.5), 0.0);
+    assert_eq!(c.derivative(4.5), 0.0);
+    // Derivative matches a central difference, and the key slopes.
+    for x in [1.25f32, 1.9, 2.5, 3.7] {
+        let h = 1e-3;
+        let fd = (c.evaluate(x + h) - c.evaluate(x - h)) / (2.0 * h);
+        check!(near_eps(c.derivative(x), fd, 1e-2));
+    }
+    check!(near(c.derivative(2.0), c.tangents()[1]));
+    check!(near(c.derivative(1.0), 2.0)); // one-sided secant at the start
+    check!(near(c.derivative(4.0), 0.5));
+}
+
+#[test]
+fn monotone_curve_edit_keys() {
+    let mut c = MonotoneCurve::<f32>::new();
+    assert!(c.is_empty());
+    assert_eq!(c.evaluate(1.0), 0.0);
+    assert_eq!(c.add(2.0, 20.0), 0);
+    assert_eq!(c.evaluate(7.0), 20.0); // single key: constant
+    assert_eq!(c.derivative(2.0), 0.0);
+    assert_eq!(c.add(0.0, 0.0), 0); // inserted in front
+    assert_eq!(c.add(1.0, 10.0), 1);
+    assert_eq!(c.len(), 3);
+    assert_eq!(c.add(1.0, 12.0), 1); // same x: replaced, not added
+    assert_eq!(c.len(), 3);
+    assert_eq!(c[1], float2::new(1.0, 12.0));
+    assert_eq!(c.tangents().len(), 3);
+    assert_eq!(c.set_key(1, 3.0, 30.0), 2); // moved past the last key
+    assert_eq!(
+        c.keys(),
+        &[
+            float2::new(0.0, 0.0),
+            float2::new(2.0, 20.0),
+            float2::new(3.0, 30.0)
+        ]
+    );
+    c.remove_key(0);
+    assert_eq!(c.domain(), (2.0, 3.0));
+    // from_keys sorts and keeps the last duplicate.
+    let d = MonotoneCurve::from_keys(keys(&[(3.0, 1.0), (1.0, 5.0), (3.0, 2.0), (2.0, 0.0)]));
+    assert_eq!(
+        d.keys(),
+        &[
+            float2::new(1.0, 5.0),
+            float2::new(2.0, 0.0),
+            float2::new(3.0, 2.0)
+        ]
+    );
+    c.clear();
+    assert!(c.is_empty() && c.tangents().is_empty());
+}
+
+#[test]
+fn monotone_curve_sample_is_a_lookup_table() {
+    let c = MonotoneCurve::from_keys(keys(&[(0.0, 0.0), (1.0, 1.0), (2.0, 4.0)]));
+    let lut = c.sample(5);
+    assert_eq!(lut.len(), 5);
+    check!(near(lut[0], 0.0));
+    check!(near(lut[2], 1.0)); // x = 1
+    check!(near(lut[4], 4.0));
+    assert!(lut.windows(2).all(|w| w[0] <= w[1]));
+    assert_eq!(c.sample(1), vec![0.0]);
+    assert!(c.sample(0).is_empty());
+    let d = MonotoneCurve::from_keys([double2::new(0.0, 1.0), double2::new(1.0, 3.0)]);
+    assert!((d.evaluate(0.5) - 2.0).abs() < 1e-12);
+}
+
+#[test]
+fn animation_curve_set_monotone_tangents() {
+    let mut c = AnimationCurve::<f32>::from_preset(Preset::Linear);
+    c.add_key(0.6, 1.2);
+    c.toggle_tangent_split_join(1, Tangent::Out);
+    assert!(!c.is_locked(1));
+    c.set_monotone_tangents();
+    assert!(c.is_locked(1));
+    assert_eq!(c[1].in_tangent, 0.0); // local maximum
+    assert_eq!(c[1].out_tangent, 0.0);
+    check!(near(c[0].out_tangent, 2.0)); // one-sided secant
+    // No overshoot in either segment.
+    for i in 0..=100 {
+        let t = i as f32 * 0.01;
+        let v = c.evaluate(t);
+        if t <= 0.6 {
+            assert!((-1e-5..=1.2 + 1e-5).contains(&v));
+        } else {
+            assert!((1.0 - 1e-5..=1.2 + 1e-5).contains(&v));
+        }
+    }
+}

@@ -66,7 +66,7 @@ Everything is re-exported at the crate root (one flat namespace, like `vkm::`):
 | `quaternion` | `Quaternion<T>` (`quat`, `dquat`): axis-angle, Euler, from/to matrix, `slerp`/`nlerp`, `from_to_rotation`, `look_rotation`, `rotate_towards`, `angle_to` |
 | `transform`  | `translate`, `scale`, `rotate`, `compose_trs`, `look_at`, `perspective`, `ortho` (Vulkan), `decompose`, `rotate_towards` for vectors, `rad`/`deg` |
 | `common`     | `min/max/clamp/saturate/lerp/step/smoothstep/abs/sign/reflect/distance/angle/project/move_towards`, `floor/sqrt/sin/.../atan2/fmod/pow/frac/rsqrt`, `repeat/ping_pong/lerp_angle`, `Ray` + `ray_triangle_intersect` |
-| `curves`     | `hermite`, `catmull_rom`, `cardinal` (+ tangents), `Spline<V>` with phantom end knots, `SplineArcLength` (distance -> u, even sampling, nearest point), `AnimationCurve` keyframes with presets and tangent handles |
+| `curves`     | `hermite`, `catmull_rom`, `cardinal` (+ tangents), `Spline<V>` with phantom end knots, `SplineArcLength` (distance -> u, even sampling, nearest point), `AnimationCurve` keyframes with presets and tangent handles, `MonotoneCurve` (Fritsch-Carlson, no overshoot) |
 | `pack`       | `quantize_snorm16` & friends (8/10/16-bit, snorm/unorm), `oct_encode16`/`oct_decode16`, tangent + handedness packing, `pack_half2x16` — all `const fn` where no `sqrt` is involved |
 | `layout`     | `#[derive(Std140)]` / `#[derive(Std430)]`, `std140_align::<T>()`, `Std140<T>` / `Std430<T>` / `Std140Array<T, N>` wrappers, column-padded matrices |
 | `scalar`     | `Scalar`, `Signed`, `Float`, `Componentwise`, `Vector`, `Dim` — the traits generic code is written against |
@@ -149,8 +149,9 @@ deliberately unsupported (4 bytes in GLSL, 1 in Rust): use `u32`.
 ## Curves
 
 Catmull-Rom / cardinal splines through waypoints, an arc-length table for
-constant-speed travel and closest-point queries, and Unity-style keyframed
-`AnimationCurve`s. Everything is generic over the vector type.
+constant-speed travel and closest-point queries, Unity-style keyframed
+`AnimationCurve`s, and shape-preserving `MonotoneCurve`s (Fritsch-Carlson) for
+remap ramps that must not overshoot. Everything is generic over the vector type.
 
 ```rust
 use matma::*;
@@ -173,6 +174,13 @@ let u = arc.nearest_u(&path, float3::new(2.0, 1.0, 0.0));
 let mut fade = AnimationCurve::<f32>::from_preset(Preset::EaseInOut);
 fade.add_key(0.6, 1.2);                          // overshoot, flat tangents
 let alpha = fade.evaluate(0.3);
+fade.set_monotone_tangents();                    // "make monotone": no overshoot between keys
+
+let fov = MonotoneCurve::from_keys([              // speed -> FOV, never over/undershoots
+    float2::new(0.0, 60.0), float2::new(10.0, 60.0), float2::new(20.0, 80.0), float2::new(40.0, 82.0),
+]);
+let deg = fov.evaluate(15.0);                    // between 60 and 80, guaranteed
+let lut = fov.sample(64);                        // bake to a table
 ```
 
 See `examples/curves.rs` for the full tour.
@@ -204,7 +212,7 @@ cargo test                           # SSE2 / NEON backend
 cargo test --features force-scalar   # portable fallback, diff against SIMD results
 cargo build --no-default-features    # without the derive macros (drops the proc-macro crate)
 cargo run --example usage            # vectors, quaternions, MVP, GPU interop, derive(Std140)
-cargo run --example curves           # splines, arc length, AnimationCurve
+cargo run --example curves           # splines, arc length, AnimationCurve, MonotoneCurve
 ```
 
 MSRV 1.87 (edition 2024).

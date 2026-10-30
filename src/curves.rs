@@ -15,6 +15,9 @@
 //! * [`AnimationCurve`]: Unity-style keyframes on `[0, 1]` with in/out tangents,
 //!   presets (linear, ease in/out, ...) and the editor helpers (locked tangents,
 //!   tangent handles) that go with them.
+//! * [`MonotoneCurve`] / [`fritsch_carlson_tangents`]: a shape-preserving
+//!   `y = f(x)` through sorted keys (Fritsch-Carlson monotone cubic Hermite) that
+//!   never overshoots, for remap ramps and lookup tables.
 //!
 //! Everything is generic over the vector type (`float3`, `float2`, `double3`, or
 //! a plain `f32` for 1-D curves) and uses `Vec`, so this module needs `alloc`.
@@ -36,6 +39,16 @@
 //! let ease = AnimationCurve::<f32>::from_preset(Preset::EaseInOut);
 //! assert_eq!(ease.evaluate(0.5), 0.5);
 //! assert!(ease.evaluate(0.25) < 0.25);
+//!
+//! // speed (m/s) -> field of view, without overshoot between the keys
+//! let fov = MonotoneCurve::from_keys([
+//!     float2::new(0.0, 60.0),
+//!     float2::new(10.0, 62.0),
+//!     float2::new(20.0, 75.0),
+//!     float2::new(40.0, 80.0),
+//! ]);
+//! assert!(fov.evaluate(30.0) > 75.0 && fov.evaluate(30.0) < 80.0);
+//! assert_eq!(fov.evaluate(99.0), 80.0); // held past the last key
 //! ```
 
 use core::ops::{Add, Index, Mul};
@@ -838,6 +851,24 @@ impl<T: Float> AnimationCurve<T> {
         }
     }
 
+    /// Replaces every key's tangents with [`fritsch_carlson_tangents`] computed
+    /// from the keys, joining in/out (locks every key). The curve then never
+    /// overshoots between keys: a "make monotone" editor action.
+    pub fn set_monotone_tangents(&mut self) {
+        let anchors: Vec<Vector2<T>> = self
+            .keys
+            .iter()
+            .map(|k| Vector2::new(k.time, k.value))
+            .collect();
+        let mut slopes = vec![T::ZERO; anchors.len()];
+        fritsch_carlson_tangents(&anchors, &mut slopes);
+        for (key, m) in self.keys.iter_mut().zip(slopes) {
+            key.in_tangent = m;
+            key.out_tangent = m;
+        }
+        self.locked.iter_mut().for_each(|l| *l = true);
+    }
+
     /// Key `i`'s anchor as `(time, value)`.
     #[inline]
     pub fn anchor(&self, i: usize) -> Vector2<T> {
@@ -973,6 +1004,277 @@ impl<T> Index<usize> for AnimationCurve<T> {
     type Output = Key<T>;
     #[inline]
     fn index(&self, i: usize) -> &Key<T> {
+        &self.keys[i]
+    }
+}
+
+// ---- MonotoneCurve ------------------------------------------------------------
+
+/// Fritsch-Carlson tangents for a monotone cubic Hermite interpolant through
+/// `keys` (sorted by `x`, strictly increasing), written to `out` (same length).
+///
+/// Where the data is monotone the resulting curve is monotone too: no overshoot
+/// between keys. Local extrema and flat runs get zero slope; the end keys use the
+/// one-sided secant. Panics if the lengths differ.
+pub fn fritsch_carlson_tangents<T: Float>(keys: &[Vector2<T>], out: &mut [T]) {
+    assert_eq!(
+        keys.len(),
+        out.len(),
+        "keys and tangents must have equal length"
+    );
+    let n = keys.len();
+    match n {
+        0 => return,
+        1 => {
+            out[0] = T::ZERO;
+            return;
+        }
+        _ => {}
+    }
+    // Secant slopes.
+    let secant = |k: usize| (keys[k + 1].y - keys[k].y) / (keys[k + 1].x - keys[k].x);
+    let half = T::from_f64(0.5);
+    out[0] = secant(0);
+    out[n - 1] = secant(n - 2);
+    for k in 1..n - 1 {
+        let (a, b) = (secant(k - 1), secant(k));
+        out[k] = if a * b <= T::ZERO {
+            T::ZERO // extremum or flat neighbour
+        } else {
+            (a + b) * half
+        };
+    }
+    // Limit each segment's tangents so the cubic stays monotone (alpha^2 + beta^2 <= 9).
+    let nine = T::from_f64(9.0);
+    let three = T::from_f64(3.0);
+    for k in 0..n - 1 {
+        let d = secant(k);
+        if d == T::ZERO {
+            out[k] = T::ZERO;
+            out[k + 1] = T::ZERO;
+            continue;
+        }
+        let alpha = out[k] / d;
+        let beta = out[k + 1] / d;
+        if alpha < T::ZERO {
+            out[k] = T::ZERO;
+        }
+        if beta < T::ZERO {
+            out[k + 1] = T::ZERO;
+        }
+        let r2 = alpha * alpha + beta * beta;
+        if r2 > nine {
+            let tau = three / r2.sqrt();
+            out[k] = tau * alpha * d;
+            out[k + 1] = tau * beta * d;
+        }
+    }
+}
+
+/// A shape-preserving `y = f(x)` curve through sorted keys: C1 cubic Hermite
+/// segments with [Fritsch-Carlson](fritsch_carlson_tangents) tangents, so the
+/// curve never overshoots its keys. Use it for remap ramps and lookup tables
+/// (speed -> FOV, distance -> volume) where a Catmull-Rom would wiggle.
+///
+/// Unlike [`AnimationCurve`], `x` is unbounded and tangents are computed, not
+/// edited. Keys are kept sorted by `x`; adding a key at an existing `x` replaces
+/// its `y`. Outside the key range the curve holds the end values.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MonotoneCurve<T = f32> {
+    keys: Vec<Vector2<T>>,
+    tangents: Vec<T>,
+}
+
+impl<T: Float> Default for MonotoneCurve<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Float> MonotoneCurve<T> {
+    /// An empty curve (evaluates to 0).
+    pub const fn new() -> Self {
+        Self {
+            keys: Vec::new(),
+            tangents: Vec::new(),
+        }
+    }
+
+    /// A curve through `(x, y)` keys in any order; duplicate `x` keeps the last.
+    pub fn from_keys(keys: impl IntoIterator<Item = Vector2<T>>) -> Self {
+        let mut keys: Vec<Vector2<T>> = keys.into_iter().collect();
+        keys.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(core::cmp::Ordering::Equal));
+        keys.dedup_by(|later, earlier| {
+            if later.x == earlier.x {
+                earlier.y = later.y;
+                true
+            } else {
+                false
+            }
+        });
+        let mut c = Self {
+            tangents: Vec::new(),
+            keys,
+        };
+        c.recompute();
+        c
+    }
+
+    fn recompute(&mut self) {
+        self.tangents.clear();
+        self.tangents.resize(self.keys.len(), T::ZERO);
+        fritsch_carlson_tangents(&self.keys, &mut self.tangents);
+    }
+
+    /// Position of the first key with `x > key_x` (the insertion point).
+    #[inline]
+    fn upper_bound(&self, x: T) -> usize {
+        self.keys.partition_point(|k| k.x <= x)
+    }
+
+    /// Inserts a key, keeping the keys sorted; a key at the same `x` is replaced.
+    /// Returns the key's index.
+    pub fn add(&mut self, x: T, y: T) -> usize {
+        let at = self.upper_bound(x);
+        let i = if at > 0 && self.keys[at - 1].x == x {
+            self.keys[at - 1].y = y;
+            at - 1
+        } else {
+            self.keys.insert(at, Vector2::new(x, y));
+            at
+        };
+        self.recompute();
+        i
+    }
+
+    /// Removes key `i`.
+    pub fn remove_key(&mut self, i: usize) {
+        self.keys.remove(i);
+        self.recompute();
+    }
+
+    /// Moves key `i` to `(x, y)`; keys stay sorted, so the index may change.
+    /// Returns the key's new index.
+    pub fn set_key(&mut self, i: usize, x: T, y: T) -> usize {
+        self.keys.remove(i);
+        self.add(x, y)
+    }
+
+    /// Removes all keys.
+    pub fn clear(&mut self) {
+        self.keys.clear();
+        self.tangents.clear();
+    }
+
+    /// The keys, sorted by `x`.
+    #[inline]
+    pub fn keys(&self) -> &[Vector2<T>] {
+        &self.keys
+    }
+
+    /// The slope `dy/dx` at each key, parallel to [`keys`](Self::keys).
+    #[inline]
+    pub fn tangents(&self) -> &[T] {
+        &self.tangents
+    }
+
+    /// Number of keys.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+
+    /// `true` when there are no keys.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
+
+    /// `(first x, last x)`; `(0, 0)` when empty.
+    pub fn domain(&self) -> (T, T) {
+        match (self.keys.first(), self.keys.last()) {
+            (Some(a), Some(b)) => (a.x, b.x),
+            _ => (T::ZERO, T::ZERO),
+        }
+    }
+
+    /// Segment index and normalised parameter for an `x` strictly inside the domain.
+    #[inline]
+    fn locate(&self, x: T) -> (usize, T, T) {
+        let i = self.upper_bound(x).clamp(1, self.keys.len() - 1) - 1;
+        let (a, b) = (self.keys[i], self.keys[i + 1]);
+        let span = b.x - a.x;
+        (i, (x - a.x) / span, span)
+    }
+
+    /// The curve's value at `x`, held constant outside the key range.
+    pub fn evaluate(&self, x: T) -> T {
+        let Some((&first, &last)) = self.keys.first().zip(self.keys.last()) else {
+            return T::ZERO;
+        };
+        if x <= first.x || self.keys.len() == 1 {
+            return first.y;
+        }
+        if x >= last.x {
+            return last.y;
+        }
+        let (i, u, span) = self.locate(x);
+        let (a, b) = (self.keys[i], self.keys[i + 1]);
+        hermite(
+            a.y,
+            self.tangents[i] * span,
+            b.y,
+            self.tangents[i + 1] * span,
+            u,
+        )
+    }
+
+    /// Slope `dy/dx` at `x`; zero outside the key range.
+    pub fn derivative(&self, x: T) -> T {
+        let Some((&first, &last)) = self.keys.first().zip(self.keys.last()) else {
+            return T::ZERO;
+        };
+        if x < first.x || x > last.x || self.keys.len() == 1 {
+            return T::ZERO;
+        }
+        let (i, u, span) = self.locate(x);
+        let (a, b) = (self.keys[i], self.keys[i + 1]);
+        hermite_derivative(
+            a.y,
+            self.tangents[i] * span,
+            b.y,
+            self.tangents[i + 1] * span,
+            u,
+        ) / span
+    }
+
+    /// Appends `count` values evenly spaced over the domain (both ends included)
+    /// to `out`: a lookup table. Unlike [`Spline::sample`], `count` is the total.
+    pub fn sample_into(&self, out: &mut Vec<T>, count: usize) {
+        let (x0, x1) = self.domain();
+        out.reserve(count);
+        if count == 1 {
+            out.push(self.evaluate(x0));
+            return;
+        }
+        let step = (x1 - x0) / T::from_f64((count.max(2) - 1) as f64);
+        for i in 0..count {
+            out.push(self.evaluate(x0 + step * T::from_f64(i as f64)));
+        }
+    }
+
+    /// [`sample_into`](Self::sample_into) into a new `Vec`.
+    pub fn sample(&self, count: usize) -> Vec<T> {
+        let mut out = Vec::new();
+        self.sample_into(&mut out, count);
+        out
+    }
+}
+
+impl<T> Index<usize> for MonotoneCurve<T> {
+    type Output = Vector2<T>;
+    #[inline]
+    fn index(&self, i: usize) -> &Vector2<T> {
         &self.keys[i]
     }
 }
