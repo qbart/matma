@@ -213,6 +213,7 @@ cargo test --features force-scalar   # portable fallback, diff against SIMD resu
 cargo build --no-default-features    # without the derive macros (drops the proc-macro crate)
 cargo run --example usage            # vectors, quaternions, MVP, GPU interop, derive(Std140)
 cargo run --example curves           # splines, arc length, AnimationCurve, MonotoneCurve
+make publish                         # crates.io: matma-derive, then matma
 ```
 
 MSRV 1.87 (edition 2024).
