@@ -1036,9 +1036,9 @@ pub fn fritsch_carlson_tangents<T: Float>(keys: &[Vector2<T>], out: &mut [T]) {
     let half = T::from_f64(0.5);
     out[0] = secant(0);
     out[n - 1] = secant(n - 2);
-    for k in 1..n - 1 {
+    for (k, m) in out.iter_mut().enumerate().take(n - 1).skip(1) {
         let (a, b) = (secant(k - 1), secant(k));
-        out[k] = if a * b <= T::ZERO {
+        *m = if a * b <= T::ZERO {
             T::ZERO // extremum or flat neighbour
         } else {
             (a + b) * half

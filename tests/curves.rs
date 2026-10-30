@@ -408,7 +408,7 @@ fn fritsch_carlson_tangents_known_values() {
     let (a, b) = (m[1] / d, m[2] / d);
     assert!(a * a + b * b <= 9.0 + 1e-4);
     // Degenerate sizes.
-    fritsch_carlson_tangents(&[], &mut []);
+    fritsch_carlson_tangents::<f32>(&[], &mut []);
     let mut one = [5.0f32];
     fritsch_carlson_tangents(&[float2::new(1.0, 2.0)], &mut one);
     assert_eq!(one[0], 0.0);
