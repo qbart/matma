@@ -1,6 +1,6 @@
 [package]
 name = "matma-derive"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.87"
 description = "Derive macros for matma's std140/std430 GPU buffer layouts (#[derive(Std140)], #[derive(Std430)])."
