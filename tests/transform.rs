@@ -103,6 +103,92 @@ fn ortho_vulkan_depth() {
 }
 
 #[test]
+fn perspective_infinite_reversed_depth() {
+    let n = 0.1f32;
+    let p = perspective_infinite_reversed(rad(60.0), 16.0 / 9.0, n);
+    let depth = |d: f32| {
+        let c = p * float4::new(0.3, -0.2, -d, 1.0);
+        check!(near(c.w, d)); // clip.w is the view distance
+        c.z / c.w
+    };
+    check!(near(depth(n), 1.0));
+    check!(near(depth(2.0 * n), 0.5));
+    let tiny = depth(1e6 * n);
+    assert!(tiny > 0.0 && tiny < 1e-5, "{tiny}");
+    // Strictly decreasing with distance.
+    let mut prev = depth(n);
+    for i in 1..200 {
+        let d = n * (1.0 + i as f32 * 0.5).powi(2);
+        let cur = depth(d);
+        assert!(cur < prev, "depth not decreasing at {d}: {cur} >= {prev}");
+        prev = cur;
+    }
+    // x and y agree with the finite projection, Y flip included.
+    let q = perspective(rad(60.0), 16.0 / 9.0, n, 100.0);
+    for v in [
+        float4::new(1.0, 2.0, -3.0, 1.0),
+        float4::new(-0.5, 0.25, -50.0, 1.0),
+    ] {
+        let (a, b) = (p * v, q * v);
+        check!(near(a.x, b.x));
+        check!(near(a.y, b.y));
+        check!(near(a.w, b.w));
+    }
+    assert!((p * float4::new(0.0, 1.0, -1.0, 1.0)).y < 0.0);
+}
+
+#[test]
+fn perspective_reversed_depth() {
+    let (n, f) = (0.1f32, 100.0);
+    let p = perspective_reversed(rad(60.0), 16.0 / 9.0, n, f);
+    let cnear = p * float4::new(0.0, 0.0, -n, 1.0);
+    let cfar = p * float4::new(0.0, 0.0, -f, 1.0);
+    check!(near(cnear.z / cnear.w, 1.0)); // near -> 1
+    check!(near(cfar.z / cfar.w, 0.0)); // far  -> 0
+    // Same matrix as the forward projection with the planes swapped.
+    check!(near_m4(&p, &perspective(rad(60.0), 16.0 / 9.0, f, n)));
+    check!(near_m4(
+        &Matrix4x4::perspective_reversed(rad(60.0), 16.0 / 9.0, n, f),
+        &p
+    ));
+}
+
+#[test]
+fn ortho_reversed_depth() {
+    let (n, f) = (0.1f32, 100.0);
+    let o = ortho_reversed(-2.0, 3.0, -1.0, 4.0, n, f);
+    let fwd = ortho(-2.0, 3.0, -1.0, 4.0, n, f);
+    check!(near((o * float4::new(0.0, 0.0, -n, 1.0)).z, 1.0));
+    check!(near((o * float4::new(0.0, 0.0, -f, 1.0)).z, 0.0));
+    for v in [
+        float4::new(1.0, 2.0, -3.0, 1.0),
+        float4::new(-2.0, 4.0, -50.0, 1.0),
+    ] {
+        let (a, b) = (o * v, fwd * v);
+        check!(near(a.x, b.x));
+        check!(near(a.y, b.y));
+        check!(near(a.w, b.w));
+    }
+    // Y flipped: top of the box maps to clip -1.
+    check!(near((o * float4::new(0.0, 4.0, -1.0, 1.0)).y, -1.0));
+}
+
+#[test]
+fn reversed_depth_double() {
+    let n = 0.05f64;
+    let p = perspective_infinite_reversed(rad(70.0f64), 1.5, n);
+    let c = p * double4::new(0.0, 0.0, -n * 4.0, 1.0);
+    assert!((c.z / c.w - 0.25).abs() < 1e-12);
+    let far = p * double4::new(0.0, 0.0, -1e9, 1.0);
+    assert!(far.z / far.w > 0.0 && far.z / far.w < 1e-9);
+    let q = double4x4::perspective_reversed(rad(70.0f64), 1.5, n, 500.0);
+    let cf = q * double4::new(0.0, 0.0, -500.0, 1.0);
+    assert!((cf.z / cf.w).abs() < 1e-12);
+    let o = ortho_reversed(-1.0f64, 1.0, -1.0, 1.0, n, 500.0);
+    assert!(((o * double4::new(0.0, 0.0, -n, 1.0)).z - 1.0).abs() < 1e-12);
+}
+
+#[test]
 fn full_mvp_pipeline() {
     let p = perspective(rad(60.0), 16.0 / 9.0, 0.1, 100.0);
     let v = look_at(float3::new(0.0, 0.0, 5.0), float3::ZERO, float3::Y);

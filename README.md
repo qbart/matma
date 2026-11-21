@@ -49,6 +49,10 @@ let normal_packed: short2 = oct_encode16(float3::UP); // -> R16G16_SNORM vertex 
   `float2x3 * float3x2 = float2x2`.
 - **World space** is right-handed, Y-up, forward = `-Z` (`float3::FORWARD`), the
   direction a `look_at` camera faces. Vulkan's Y-down lives only in clip space.
+- **Depth is `[0, 1]`**, near = 0 in `perspective` / `ortho`. The `*_reversed`
+  variants put 1 at the near plane and 0 at the far one (or at infinity for
+  `perspective_infinite_reversed`), which spreads float precision evenly; pair
+  them with a float depth buffer cleared to 0 and a `GREATER_OR_EQUAL` compare.
 - **Angles are radians** everywhere; `rad(90.0)` / `deg(x)` convert. Everything
   Unity-flavoured (`angle`, `move_towards`, `rotate_towards`, `look_rotation`,
   `lerp_angle`, `repeat`, `ping_pong`) is in radians too.
@@ -64,7 +68,7 @@ Everything is re-exported at the crate root (one flat namespace, like `vkm::`):
 | `vector`     | `Vector2/3/4<T>`; aliases `float3`, `int2`, `uint4`, `bool3`, `double4`, `short2`, `ubyte4`, `vec3`, ...; swizzles (`xyz()`, `swizzle3::<2,1,0>()`); `X/Y/Z/UP/FORWARD/...` consts; comparisons to `boolN` + `select` |
 | `matrix`     | `Matrix<V, C>`, `floatRxC` / `mat{2,3,4}` aliases, `mul`, `transpose`, `inverse`, `determinant`, `normal_matrix`, `from_rows` / `to_cols_array` |
 | `quaternion` | `Quaternion<T>` (`quat`, `dquat`): axis-angle, Euler, from/to matrix, `slerp`/`nlerp`, `from_to_rotation`, `look_rotation`, `rotate_towards`, `angle_to` |
-| `transform`  | `translate`, `scale`, `rotate`, `compose_trs`, `look_at`, `perspective`, `ortho` (Vulkan), `decompose`, `rotate_towards` for vectors, `rad`/`deg` |
+| `transform`  | `translate`, `scale`, `rotate`, `compose_trs`, `look_at`, `perspective`, `ortho` (Vulkan), `perspective_reversed`, `perspective_infinite_reversed`, `ortho_reversed` (reversed depth), `decompose`, `rotate_towards` for vectors, `rad`/`deg` |
 | `common`     | `min/max/clamp/saturate/lerp/step/smoothstep/abs/sign/reflect/distance/angle/project/move_towards`, `floor/sqrt/sin/.../atan2/fmod/pow/frac/rsqrt`, `repeat/ping_pong/lerp_angle`, `Ray` + `ray_triangle_intersect` |
 | `curves`     | `hermite`, `catmull_rom`, `cardinal` (+ tangents), `Spline<V>` with phantom end knots, `SplineArcLength` (distance -> u, even sampling, nearest point), `AnimationCurve` keyframes with presets and tangent handles, `MonotoneCurve` (Fritsch-Carlson, no overshoot) |
 | `pack`       | `quantize_snorm16` & friends (8/10/16-bit, snorm/unorm), `oct_encode16`/`oct_decode16`, tangent + handedness packing, `pack_half2x16` — all `const fn` where no `sqrt` is involved |

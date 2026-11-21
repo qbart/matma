@@ -136,6 +136,34 @@ pub fn perspective<T: Float>(fovy: T, aspect: T, z_near: T, z_far: T) -> Matrix4
 pub fn ortho<T: Float>(left: T, right: T, bottom: T, top: T, z_near: T, z_far: T) -> Matrix4x4<T> {
     Matrix4x4::ortho(left, right, bottom, top, z_near, z_far)
 }
+/// Reversed-depth perspective with an infinite far plane: depth `1` at `z_near`,
+/// approaching `0` at infinity. Needs a float depth buffer cleared to `0` with a
+/// `GREATER` / `GREATER_OR_EQUAL` compare. See [`Matrix4x4::perspective_infinite_reversed`].
+#[inline]
+pub fn perspective_infinite_reversed<T: Float>(fovy: T, aspect: T, z_near: T) -> Matrix4x4<T> {
+    Matrix4x4::perspective_infinite_reversed(fovy, aspect, z_near)
+}
+/// Reversed-depth perspective: depth `1` at `z_near`, `0` at `z_far`. Needs a
+/// float depth buffer cleared to `0` with a `GREATER` / `GREATER_OR_EQUAL` compare.
+/// See [`Matrix4x4::perspective_reversed`].
+#[inline]
+pub fn perspective_reversed<T: Float>(fovy: T, aspect: T, z_near: T, z_far: T) -> Matrix4x4<T> {
+    Matrix4x4::perspective_reversed(fovy, aspect, z_near, z_far)
+}
+/// Reversed-depth orthographic: depth `1` at `z_near`, `0` at `z_far`. Needs a
+/// float depth buffer cleared to `0` with a `GREATER` / `GREATER_OR_EQUAL` compare.
+/// See [`Matrix4x4::ortho_reversed`].
+#[inline]
+pub fn ortho_reversed<T: Float>(
+    left: T,
+    right: T,
+    bottom: T,
+    top: T,
+    z_near: T,
+    z_far: T,
+) -> Matrix4x4<T> {
+    Matrix4x4::ortho_reversed(left, right, bottom, top, z_near, z_far)
+}
 
 /// The parts of an affine/projective 4x4, as returned by [`decompose`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -232,6 +260,58 @@ impl<T: Float> Matrix4x4<T> {
         m[(0, 3)] = -(right + left) / (right - left);
         m[(1, 3)] = (top + bottom) / (top - bottom); // Y-flip: row negated
         m[(2, 3)] = -z_near / (z_far - z_near);
+        m[(3, 3)] = T::ONE;
+        m
+    }
+
+    /// Reversed-depth perspective with an infinite far plane, right-handed, Y down:
+    /// depth `1` at `z_near`, falling towards `0` at infinity (`depth = z_near /
+    /// distance`). `fovy` is the vertical field of view in radians.
+    ///
+    /// Reversed depth spreads float precision evenly over the whole range. Use a
+    /// float depth buffer (`D32_SFLOAT`) cleared to `0` and a `GREATER` /
+    /// `GREATER_OR_EQUAL` depth compare.
+    pub fn perspective_infinite_reversed(fovy: T, aspect: T, z_near: T) -> Self {
+        let t = (fovy * T::from_f64(0.5)).tan();
+        let mut m = Self::ZERO;
+        m[(0, 0)] = T::ONE / (aspect * t);
+        m[(1, 1)] = -T::ONE / t; // Y-flip for Vulkan
+        m[(2, 3)] = z_near; // clip.z = z_near, clip.w = distance
+        m[(3, 2)] = -T::ONE;
+        m
+    }
+
+    /// Reversed-depth perspective, right-handed, Y down: depth `1` at `z_near`,
+    /// `0` at `z_far`. `fovy` is the vertical field of view in radians.
+    ///
+    /// Use a float depth buffer cleared to `0` and a `GREATER` /
+    /// `GREATER_OR_EQUAL` depth compare. Equals
+    /// [`perspective`](Self::perspective) with the planes swapped.
+    pub fn perspective_reversed(fovy: T, aspect: T, z_near: T, z_far: T) -> Self {
+        let t = (fovy * T::from_f64(0.5)).tan();
+        let mut m = Self::ZERO;
+        m[(0, 0)] = T::ONE / (aspect * t);
+        m[(1, 1)] = -T::ONE / t; // Y-flip for Vulkan
+        m[(2, 2)] = z_near / (z_far - z_near);
+        m[(3, 2)] = -T::ONE;
+        m[(2, 3)] = (z_near * z_far) / (z_far - z_near);
+        m
+    }
+
+    /// Reversed-depth orthographic, right-handed, Y down: depth `1` at `z_near`,
+    /// `0` at `z_far`, e.g. for shadow maps sharing a reversed-depth convention.
+    ///
+    /// Use a float depth buffer cleared to `0` and a `GREATER` /
+    /// `GREATER_OR_EQUAL` depth compare.
+    pub fn ortho_reversed(left: T, right: T, bottom: T, top: T, z_near: T, z_far: T) -> Self {
+        let two = T::from_f64(2.0);
+        let mut m = Self::ZERO;
+        m[(0, 0)] = two / (right - left);
+        m[(1, 1)] = -two / (top - bottom); // Y-flip for Vulkan
+        m[(2, 2)] = T::ONE / (z_far - z_near);
+        m[(0, 3)] = -(right + left) / (right - left);
+        m[(1, 3)] = (top + bottom) / (top - bottom); // Y-flip: row negated
+        m[(2, 3)] = z_far / (z_far - z_near);
         m[(3, 3)] = T::ONE;
         m
     }

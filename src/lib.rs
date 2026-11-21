@@ -45,7 +45,7 @@
 //! | [`vector`]      | `Vector2/3/4<T>`, Slang/GLSL aliases, swizzles, direction consts |
 //! | [`matrix`]      | `Matrix<V, C>`, `mul`, transpose/inverse/determinant             |
 //! | [`quaternion`]  | `Quaternion<T>`, slerp/nlerp, look rotation, from/to matrix      |
-//! | [`transform`]   | translate/scale/rotate, TRS, look_at, perspective/ortho, decompose |
+//! | [`transform`]   | translate/scale/rotate, TRS, look_at, perspective/ortho (+ reversed depth), decompose |
 //! | [`common`]      | min/max/clamp/saturate/lerp/step/smoothstep, trig, game helpers  |
 //! | [`curves`]      | Hermite / Catmull-Rom / cardinal splines, arc length, `AnimationCurve`, `MonotoneCurve` |
 //! | [`pack`]        | snorm/unorm quantization, octahedral normals, half-float packing |

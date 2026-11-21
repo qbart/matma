@@ -22,7 +22,7 @@ src/
   vector.rs       Vector2/3/4<T> + floatN/intN/uintN/boolN/doubleN/short2 aliases
   matrix.rs       Matrix<V, C> + floatRxC aliases, mul/transpose/inverse/determinant
   quaternion.rs   Quaternion<T> (quat / dquat)
-  transform.rs    translate/rotate/scale, look_at, perspective/ortho (Vulkan), decompose
+  transform.rs    translate/rotate/scale, look_at, perspective/ortho (Vulkan, + reversed-depth variants), decompose
   common.rs       min/max/clamp/lerp/... generic over Componentwise
   curves.rs       Hermite/Catmull-Rom/cardinal splines, arc-length table, AnimationCurve, MonotoneCurve (needs alloc)
   pack.rs         snorm/unorm quantization, octahedral encoding, half floats
@@ -170,7 +170,9 @@ loads, and the derive / wrappers supply the 16 where the GPU needs it.
 1. ✅ Project skeleton, SIMD backend, `Vector2/3/4<T>` (+ `float4` SIMD), tests.
 2. ✅ `Matrix<V, C>` (column-major, M*v), mul/transpose/identity, shape-checked products.
 3. ✅ `Quaternion<T>` + `transform`: translate/scale/rotate/look_at/compose_trs,
-   `perspective`/`ortho` with Vulkan depth [0,1] + Y-flip, `decompose`.
+   `perspective`/`ortho` with Vulkan depth [0,1] + Y-flip, `decompose`;
+   reversed-depth `perspective_reversed` / `perspective_infinite_reversed` /
+   `ortho_reversed` (1 at near, 0 at far or infinity) for float depth buffers.
 4. ✅ `layout`: std140/std430 rules, `Std140<T>`/`Std430<T>` wrappers and arrays,
    `#[derive(Std140)]` / `#[derive(Std430)]`.
 5. ✅ Swizzles, `common` (incl. Unity-style helpers), `pack` (snorm/unorm/oct/half).
